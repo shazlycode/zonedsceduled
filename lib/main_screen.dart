@@ -74,7 +74,8 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> initAllServices() async {
     await initNotifications();
     await getLocationData();
-    await getTodayPrayerTimes();
+    // await getTodayPrayerTimes();
+    await getMonthPrayerTimes();
   }
 
   @override
@@ -155,6 +156,62 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  List<Map<String, DateTime>> monthPrayerTimes = [];
+  Future<void> getMonthPrayerTimes() async {
+    Map<String, DateTime> dayPT = {};
+    _locationData ?? await getLocationData();
+    if (_locationData != null) {
+      final coordinates =
+          Coordinates(_locationData!.latitude!, _locationData!.longitude!);
+      final param = CalculationMethod.umm_al_qura.getParameters();
+
+      for (int i = 1; i < DateTime(now.year, now.month + 1, 0).day; i++) {
+        var prayerTimesss = PrayerTimes(
+            coordinates, DateComponents(now.year, now.month, i), param);
+
+        dayPT = ({
+          "fajr": prayerTimesss.fajr,
+          "dhuhr": prayerTimesss.dhuhr,
+          "asr": prayerTimesss.asr,
+          "maghrib": prayerTimesss.maghrib,
+          "isha": prayerTimesss.isha
+        });
+
+        monthPrayerTimes.add(dayPT);
+        setState(() {});
+      }
+
+      if (monthPrayerTimes.isNotEmpty) {
+        await scheduleMonthPrayerTimes();
+        debugPrint("🔔🔔🔔👌👌👌 Month Prayer Times Sceduled Successfully!!!");
+      }
+
+      print("month Prayer Times${monthPrayerTimes.length}");
+    }
+  }
+
+  Future<void> scheduleMonthPrayerTimes() async {
+    await flutterLocalNotificationsPlugin.cancelAll();
+    for (var dayPrayer in monthPrayerTimes) {
+      for (var entry in dayPrayer.entries) {
+        if (entry.value.isAfter(now)) {
+          await flutterLocalNotificationsPlugin.zonedSchedule(
+              entry.hashCode,
+              entry.key,
+              "It's time of ${entry.key} now",
+              tz.TZDateTime.from(entry.value, tz.local),
+              getNotificationDetails(),
+              uiLocalNotificationDateInterpretation:
+                  UILocalNotificationDateInterpretation.absoluteTime,
+              androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle);
+        }
+      }
+    }
+    var pendingNotifications =
+        await flutterLocalNotificationsPlugin.pendingNotificationRequests();
+    print("pendingNotifications=:${pendingNotifications.length}");
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -171,28 +228,59 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ],
         ),
-        body: todayPrayerTimes.isEmpty
+        body: monthPrayerTimes.isEmpty
             ? Center(child: const CircularProgressIndicator())
-            : SizedBox(
-                height: 100,
-                width: double.infinity,
-                child: ListView.builder(
-                    padding: EdgeInsets.all(10),
-                    scrollDirection: Axis.horizontal,
-                    itemCount: todayPrayerTimes.length,
-                    itemBuilder: (context, index) {
-                      return SizedBox(
-                        width: 80,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(todayPrayerTimes[index].name!),
-                            Text(
-                                "${todayPrayerTimes[index].time!.hour}:${todayPrayerTimes[index].time!.minute}"),
-                          ],
-                        ),
-                      );
-                    }),
+            : Column(
+                children: [
+                  SizedBox(
+                    height: 100,
+                    width: double.infinity,
+                    child: ListView.builder(
+                        padding: EdgeInsets.all(10),
+                        scrollDirection: Axis.horizontal,
+                        itemCount: todayPrayerTimes.length,
+                        itemBuilder: (context, index) {
+                          return SizedBox(
+                            width: 80,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(todayPrayerTimes[index].name!),
+                                Text(
+                                    "${todayPrayerTimes[index].time!.hour}:${todayPrayerTimes[index].time!.minute}"),
+                              ],
+                            ),
+                          );
+                        }),
+                  ),
+                  Expanded(
+                      child: ListView.builder(
+                          physics: BouncingScrollPhysics(),
+                          itemCount: monthPrayerTimes.length,
+                          itemBuilder: (context, index) {
+                            return Container(
+                              color:
+                                  now.day == index + 1 ? Colors.yellow : null,
+                              child: ListTile(
+                                leading: Text("${index + 1}"),
+                                title: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceAround,
+                                  children:
+                                      monthPrayerTimes[index].entries.map((e) {
+                                    return Column(
+                                      children: [
+                                        Text(e.key),
+                                        Text(
+                                            "${e.value.hour}:${e.value.minute}"),
+                                      ],
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                            );
+                          }))
+                ],
               ));
   }
 }
